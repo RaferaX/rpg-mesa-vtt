@@ -6,12 +6,23 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "prisma skills sync || exit 0"
   },
   "dependencies": {
+    "@auth/prisma-adapter": "^2.11.3",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "bcryptjs": "^3.0.3",
+    "konva": "^10.3.3",
     "next": "16.3.4",
+    "next-auth": "^4.24.15",
+    "pg": "^8.23.0",
+    "prisma": "^7.10.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "react-konva": "^19.2.6",
+    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
