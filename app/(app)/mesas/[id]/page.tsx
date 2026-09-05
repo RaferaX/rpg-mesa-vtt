@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { io, Socket } from "socket.io-client"
+import { Board } from "@/components/Board"
 
 export default function Mesa() {
   const params = useParams()
@@ -14,38 +15,39 @@ export default function Mesa() {
 
   const [status, setStatus] = useState("Conectando...")
   const [eventos, setEventos] = useState<string[]>([])
+  const [socket, setSocket] = useState<Socket | null>(null)
   const entrouRef = useRef(false)
-  const socketRef = useRef<Socket | null>(null)
 
   useEffect(() => {
     if (!userName) return
 
-    const socket: Socket = io("http://localhost:4000")
-    socketRef.current = socket
+    const s: Socket = io("http://localhost:4000")
 
-    socket.on("connect", () => {
+    s.on("connect", () => {
       setStatus("Conectado")
-      socket.emit("entrarMesa", { campaignId, userName })
+      s.emit("entrarMesa", { campaignId, userName })
       entrouRef.current = true
     })
 
-    socket.on("jogadorEntrou", (data: { userName: string }) => {
+    s.on("jogadorEntrou", (data: { userName: string }) => {
       setEventos((prev) => [...prev, `${data.userName} entrou na mesa`])
     })
 
-    socket.on("jogadorSaiu", (data: { userName: string }) => {
+    s.on("jogadorSaiu", (data: { userName: string }) => {
       setEventos((prev) => [...prev, `${data.userName} saiu da mesa`])
     })
 
-    socket.on("disconnect", () => {
+    s.on("disconnect", () => {
       setStatus("Desconectado")
     })
 
+    setSocket(s)
+
     return () => {
       if (entrouRef.current) {
-        socket.emit("sairMesa", campaignId)
+        s.emit("sairMesa", campaignId)
       }
-      socket.disconnect()
+      s.disconnect()
       entrouRef.current = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -70,7 +72,7 @@ export default function Mesa() {
       </div>
       <p className="text-parchment/60 mb-8">Status: {status}</p>
 
-      <div className="bg-parchment text-ink p-6 border-2 border-leather">
+      <div className="bg-parchment text-ink p-6 border-2 border-leather mb-8">
         <h2 className="font-display text-lg text-leather mb-3">Eventos da sala</h2>
         {eventos.length === 0 ? (
           <p className="text-leather/60">Nenhum evento ainda.</p>
@@ -82,6 +84,8 @@ export default function Mesa() {
           </ul>
         )}
       </div>
+
+      {socket && <Board campaignId={campaignId} socket={socket} />}
     </main>
   )
 }

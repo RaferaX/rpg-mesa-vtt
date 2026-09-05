@@ -24,6 +24,22 @@ model Campaign {
   createdAt   DateTime   @default(now())
 
   members     CampaignMember[]
+  tokens      Token[]
+}
+
+model Token {
+  id          String     @id @default(cuid())
+  name        String
+  color       String     @default("#B08A3E")
+  x           Float      @default(100)
+  y           Float      @default(100)
+
+  campaign    Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId  String
+
+  ownerId     String?
+
+  createdAt   DateTime   @default(now())
 }
 
 model CampaignMember {

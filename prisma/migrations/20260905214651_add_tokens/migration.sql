@@ -1,0 +1,16 @@
+-- CreateTable
+CREATE TABLE "Token" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "color" TEXT NOT NULL DEFAULT '#B08A3E',
+    "x" DOUBLE PRECISION NOT NULL DEFAULT 100,
+    "y" DOUBLE PRECISION NOT NULL DEFAULT 100,
+    "campaignId" TEXT NOT NULL,
+    "ownerId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Token_pkey" PRIMARY KEY ("id")
+);
+
+-- AddForeignKey
+ALTER TABLE "Token" ADD CONSTRAINT "Token_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE CASCADE ON UPDATE CASCADE;
