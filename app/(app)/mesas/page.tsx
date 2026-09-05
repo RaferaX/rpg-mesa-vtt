@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 
 type Campaign = {
   id: string
@@ -119,9 +120,10 @@ export default function Mesas() {
 
       <div className="space-y-3">
         {campaigns.map((c) => (
-          <div
+          <Link
             key={c.id}
-            className="bg-parchment text-ink p-4 border-2 border-leather flex justify-between items-center"
+            href={`/mesas/${c.id}`}
+            className="bg-parchment text-ink p-4 border-2 border-leather flex justify-between items-center hover:border-brass transition-colors"
           >
             <div>
               <p className="font-display text-lg">{c.name}</p>
@@ -129,7 +131,7 @@ export default function Mesas() {
                 {c.members.length} membro{c.members.length !== 1 ? "s" : ""} · Código: {c.inviteCode}
               </p>
             </div>
-          </div>
+          </Link>
         ))}
         {campaigns.length === 0 && (
           <p className="text-parchment/50 text-center py-8">

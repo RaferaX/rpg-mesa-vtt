@@ -16,3 +16,13 @@ body {
   background: #1B1712;
   color: #E8DCC0;
 }
+
+.cursor-sword {
+  cursor: url('/cursors/sword.svg') 4 4, auto;
+}
+.cursor-dagger {
+  cursor: url('/cursors/dagger.svg') 4 4, auto;
+}
+.cursor-staff {
+  cursor: url('/cursors/staff.svg') 4 4, auto;
+}

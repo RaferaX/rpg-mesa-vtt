@@ -1,7 +1,55 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useSession, signOut } from "next-auth/react"
+
+function CursorPicker() {
+  const [selected, setSelected] = useState("default")
+
+  useEffect(() => {
+    const saved = localStorage.getItem("cursorStyle") || "default"
+    setSelected(saved)
+  }, [])
+
+  function applyCursor(style: string) {
+    document.body.classList.remove("cursor-sword", "cursor-dagger", "cursor-staff")
+    if (style !== "default") {
+      document.body.classList.add(`cursor-${style}`)
+    }
+    localStorage.setItem("cursorStyle", style)
+    setSelected(style)
+  }
+
+  const options = [
+    { id: "default", label: "Padrão" },
+    { id: "sword", label: "Espada" },
+    { id: "dagger", label: "Adaga" },
+    { id: "staff", label: "Cajado" },
+  ]
+
+  return (
+    <section className="bg-parchment text-ink p-6 border-2 border-leather mb-6">
+      <h2 className="font-display text-lg text-leather mb-4">
+        Cursores personalizados
+      </h2>
+      <div className="grid grid-cols-4 gap-3">
+        {options.map((opt) => (
+          <button
+            key={opt.id}
+            onClick={() => applyCursor(opt.id)}
+            className={`py-3 font-display text-sm border-2 transition-colors ${
+              selected === opt.id
+                ? "border-seal bg-seal/10 text-seal"
+                : "border-leather/30 text-leather/70 hover:border-leather"
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
 
 export default function Configuracoes() {
   const { data: session } = useSession()
@@ -76,6 +124,8 @@ export default function Configuracoes() {
           Salvar alterações
         </button>
       </section>
+
+      <CursorPicker />
 
       <section className="bg-parchment text-ink p-6 border-2 border-leather mb-6">
         <h2 className="font-display text-lg text-leather mb-4">
