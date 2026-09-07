@@ -13,11 +13,25 @@ export async function GET(
   }
 
   const { id } = await params
-  const campaign = await prisma.campaign.findUnique({ where: { id } })
+  const userId = (session.user as { id: string }).id
 
+  const campaign = await prisma.campaign.findUnique({
+    where: { id },
+    include: {
+      members: { include: { user: true } },
+    },
+  })
   if (!campaign) {
     return NextResponse.json({ error: "Mesa não encontrada" }, { status: 404 })
   }
 
-  return NextResponse.json(campaign)
+  const membership = await prisma.campaignMember.findUnique({
+    where: { userId_campaignId: { userId, campaignId: id } },
+  })
+
+  return NextResponse.json({
+    ...campaign,
+    myRole: membership?.role ?? "PLAYER",
+    myUserId: userId,
+  })
 }

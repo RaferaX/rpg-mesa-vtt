@@ -27,15 +27,24 @@ export async function POST(
   }
 
   const { id } = await params
-  const { name, color } = await req.json()
   const userId = (session.user as { id: string }).id
+
+  const membership = await prisma.campaignMember.findUnique({
+    where: { userId_campaignId: { userId, campaignId: id } },
+  })
+
+  if (membership?.role !== "MASTER") {
+    return NextResponse.json({ error: "Só o mestre pode criar personagens" }, { status: 403 })
+  }
+
+  const { name, color, ownerId } = await req.json()
 
   const token = await prisma.token.create({
     data: {
       name: name || "Token",
       color: color || "#B08A3E",
       campaignId: id,
-      ownerId: userId,
+      ownerId: ownerId || null,
     },
   })
 

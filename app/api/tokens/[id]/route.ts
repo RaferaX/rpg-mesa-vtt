@@ -13,12 +13,62 @@ export async function PUT(
   }
 
   const { id } = await params
+  const userId = (session.user as { id: string }).id
   const { x, y } = await req.json()
 
-  const token = await prisma.token.update({
+  const token = await prisma.token.findUnique({ where: { id } })
+  if (!token) {
+    return NextResponse.json({ error: "Token não encontrado" }, { status: 404 })
+  }
+
+  const membership = await prisma.campaignMember.findUnique({
+    where: { userId_campaignId: { userId, campaignId: token.campaignId } },
+  })
+
+  const isOwner = token.ownerId === userId
+  const isMaster = membership?.role === "MASTER"
+
+  if (!isOwner && !isMaster) {
+    return NextResponse.json({ error: "Você não pode mover este token" }, { status: 403 })
+  }
+
+  const updated = await prisma.token.update({
     where: { id },
     data: { x, y },
   })
 
-  return NextResponse.json(token)
+  return NextResponse.json(updated)
+}
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) {
+    return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
+  }
+
+  const { id } = await params
+  const userId = (session.user as { id: string }).id
+
+  const token = await prisma.token.findUnique({ where: { id } })
+  if (!token) {
+    return NextResponse.json({ error: "Token não encontrado" }, { status: 404 })
+  }
+
+  const membership = await prisma.campaignMember.findUnique({
+    where: { userId_campaignId: { userId, campaignId: token.campaignId } },
+  })
+
+  const isOwner = token.ownerId === userId
+  const isMaster = membership?.role === "MASTER"
+
+  if (!isOwner && !isMaster) {
+    return NextResponse.json({ error: "Você não pode remover este token" }, { status: 403 })
+  }
+
+  await prisma.token.delete({ where: { id } })
+
+  return NextResponse.json({ success: true })
 }

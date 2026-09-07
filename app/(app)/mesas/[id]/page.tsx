@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react"
 import { io, Socket } from "socket.io-client"
 import { Board } from "@/components/Board"
 import { Chat } from "@/components/Chat"
+import { CharacterPanel } from "@/components/CharacterPanel"
 
 export default function Mesa() {
   const params = useParams()
@@ -18,6 +19,19 @@ export default function Mesa() {
   const [eventos, setEventos] = useState<string[]>([])
   const [socket, setSocket] = useState<Socket | null>(null)
   const entrouRef = useRef(false)
+
+  const [myRole, setMyRole] = useState<"MASTER" | "PLAYER" | null>(null)
+  const [myUserId, setMyUserId] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function loadRole() {
+      const res = await fetch(`/api/campaigns/${campaignId}`)
+      const data = await res.json()
+      setMyRole(data.myRole)
+      setMyUserId(data.myUserId)
+    }
+    loadRole()
+  }, [campaignId])
 
   useEffect(() => {
     if (!userName) return
@@ -73,11 +87,24 @@ export default function Mesa() {
       </div>
       <p className="text-parchment/60 mb-6">Status: {status}</p>
 
-      {socket && userName && <Board campaignId={campaignId} socket={socket} userName={userName} />}
+      {socket && userName && myRole && myUserId && (
+        <Board
+          campaignId={campaignId}
+          socket={socket}
+          userName={userName}
+          myUserId={myUserId}
+          myRole={myRole}
+        />
+      )}
 
       {socket && userName && (
-        <div className="mt-6 max-w-3xl">
-          <Chat campaignId={campaignId} socket={socket} userName={userName} />
+        <div className="flex gap-6 mt-6 items-start">
+          <div className="flex-1 max-w-3xl">
+            <Chat campaignId={campaignId} socket={socket} userName={userName} />
+          </div>
+          <div className="w-72 shrink-0">
+            <CharacterPanel campaignId={campaignId} socket={socket} />
+          </div>
         </div>
       )}
 

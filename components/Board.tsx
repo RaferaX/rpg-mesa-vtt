@@ -12,6 +12,13 @@ type Token = {
   color: string
   x: number
   y: number
+  ownerId: string | null
+}
+
+type Member = {
+  id: string
+  role: "MASTER" | "PLAYER"
+  user: { id: string; name: string }
 }
 
 type MeasureArrow = {
@@ -29,8 +36,21 @@ const GRID_SIZE = 50
 
 type RulerMode = "off" | "livre" | "permanente"
 
-export function Board({ campaignId, socket, userName }: { campaignId: string; socket: Socket; userName: string }) {
+export function Board({
+  campaignId,
+  socket,
+  userName,
+  myUserId,
+  myRole,
+}: {
+  campaignId: string
+  socket: Socket
+  userName: string
+  myUserId: string
+  myRole: "MASTER" | "PLAYER"
+}) {
   const [tokens, setTokens] = useState<Token[]>([])
+  const [members, setMembers] = useState<Member[]>([])
   const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null)
   const [bgImage] = useImage(backgroundUrl || "")
 
@@ -45,8 +65,25 @@ export function Board({ campaignId, socket, userName }: { campaignId: string; so
   const [drawingArrow, setDrawingArrow] = useState<MeasureArrow | null>(null)
   const [arrows, setArrows] = useState<MeasureArrow[]>([])
 
-  const BOARD_WIDTH = 1000
-  const BOARD_HEIGHT = 700
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [newTokenName, setNewTokenName] = useState("")
+  const [newTokenOwner, setNewTokenOwner] = useState("")
+
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [boardSize, setBoardSize] = useState({ width: 1000, height: 700 })
+
+  useEffect(() => {
+    function updateSize() {
+      if (!containerRef.current) return
+      const width = containerRef.current.offsetWidth
+      const height = Math.max(500, window.innerHeight - 320)
+      setBoardSize({ width, height })
+    }
+
+    updateSize()
+    window.addEventListener("resize", updateSize)
+    return () => window.removeEventListener("resize", updateSize)
+  }, [])
 
   useEffect(() => {
     async function loadData() {
@@ -58,6 +95,7 @@ export function Board({ campaignId, socket, userName }: { campaignId: string; so
       const campaignData = await campaignRes.json()
       setTokens(tokensData)
       setBackgroundUrl(campaignData.backgroundUrl)
+      setMembers(campaignData.members || [])
     }
     loadData()
   }, [campaignId])
@@ -67,6 +105,10 @@ export function Board({ campaignId, socket, userName }: { campaignId: string; so
       setTokens((prev) =>
         prev.map((t) => (t.id === tokenId ? { ...t, x, y } : t))
       )
+    }
+
+    function handleNovoToken(token: Token) {
+      setTokens((prev) => [...prev, token])
     }
 
     function handleMapaAtualizado({ url }: { url: string }) {
@@ -81,21 +123,35 @@ export function Board({ campaignId, socket, userName }: { campaignId: string; so
       setArrows((prev) => prev.filter((a) => a.id !== arrowId))
     }
 
+    function handleTokenRemovidoConfirmado({ tokenId }: { tokenId: string }) {
+      setTokens((prev) => prev.filter((t) => t.id !== tokenId))
+    }
+
     socket.on("tokenMovido", handleTokenMovido)
+    socket.on("novoToken", handleNovoToken)
     socket.on("mapaAtualizado", handleMapaAtualizado)
     socket.on("setaDesenhada", handleSetaDesenhada)
     socket.on("setaRemovida", handleSetaRemovida)
+    socket.on("tokenRemovidoConfirmado", handleTokenRemovidoConfirmado)
 
     return () => {
       socket.off("tokenMovido", handleTokenMovido)
+      socket.off("novoToken", handleNovoToken)
       socket.off("mapaAtualizado", handleMapaAtualizado)
       socket.off("setaDesenhada", handleSetaDesenhada)
       socket.off("setaRemovida", handleSetaRemovida)
+      socket.off("tokenRemovidoConfirmado", handleTokenRemovidoConfirmado)
     }
   }, [socket])
 
   function snapValue(value: number) {
     return Math.floor(value / GRID_SIZE) * GRID_SIZE + GRID_SIZE / 2
+  }
+
+  async function loadTokensAgain() {
+    const res = await fetch(`/api/campaigns/${campaignId}/tokens`)
+    const data = await res.json()
+    setTokens(data)
   }
 
   function handleDragEnd(tokenId: string, rawX: number, rawY: number) {
@@ -112,20 +168,49 @@ export function Board({ campaignId, socket, userName }: { campaignId: string; so
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ x, y }),
+    }).then((res) => {
+      if (!res.ok) {
+        loadTokensAgain()
+      }
     })
   }
 
-  async function handleAddToken() {
-    const name = prompt("Nome do token:")
-    if (!name) return
+  async function handleRemoveToken(tokenId: string) {
+    const confirmar = confirm("Remover este personagem do tabuleiro?")
+    if (!confirmar) return
+
+    const res = await fetch(`/api/tokens/${tokenId}`, { method: "DELETE" })
+
+    if (!res.ok) {
+      alert("Você não tem permissão para remover este token.")
+      return
+    }
+
+    setTokens((prev) => prev.filter((t) => t.id !== tokenId))
+    socket.emit("tokenRemovido", { campaignId, tokenId })
+  }
+
+  function openAddModal() {
+    setNewTokenName("")
+    setNewTokenOwner("")
+    setShowAddModal(true)
+  }
+
+  async function confirmAddToken() {
+    if (!newTokenName.trim()) return
 
     const res = await fetch(`/api/campaigns/${campaignId}/tokens`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name: newTokenName.trim(), ownerId: newTokenOwner || null }),
     })
+
+    if (!res.ok) return
+
     const newToken = await res.json()
     setTokens((prev) => [...prev, newToken])
+    socket.emit("tokenCriado", { campaignId, token: newToken })
+    setShowAddModal(false)
   }
 
   async function handleUploadBackground(e: React.ChangeEvent<HTMLInputElement>) {
@@ -139,6 +224,7 @@ export function Board({ campaignId, socket, userName }: { campaignId: string; so
       method: "POST",
       body: formData,
     })
+    if (!res.ok) return
     const updated = await res.json()
     setBackgroundUrl(updated.backgroundUrl)
 
@@ -182,14 +268,14 @@ export function Board({ campaignId, socket, userName }: { campaignId: string; so
 
   function renderGridLines() {
     const lines = []
-    for (let x = 0; x <= BOARD_WIDTH; x += GRID_SIZE) {
+    for (let x = 0; x <= boardSize.width; x += GRID_SIZE) {
       lines.push(
-        <Line key={`v-${x}`} points={[x, 0, x, BOARD_HEIGHT]} stroke="#B08A3E" strokeWidth={1} opacity={0.25} listening={false} />
+        <Line key={`v-${x}`} points={[x, 0, x, boardSize.height]} stroke="#B08A3E" strokeWidth={1} opacity={0.25} listening={false} />
       )
     }
-    for (let y = 0; y <= BOARD_HEIGHT; y += GRID_SIZE) {
+    for (let y = 0; y <= boardSize.height; y += GRID_SIZE) {
       lines.push(
-        <Line key={`h-${y}`} points={[0, y, BOARD_WIDTH, y]} stroke="#B08A3E" strokeWidth={1} opacity={0.25} listening={false} />
+        <Line key={`h-${y}`} points={[0, y, boardSize.width, y]} stroke="#B08A3E" strokeWidth={1} opacity={0.25} listening={false} />
       )
     }
     return lines
@@ -256,17 +342,21 @@ export function Board({ campaignId, socket, userName }: { campaignId: string; so
   return (
     <div>
       <div className="flex flex-wrap gap-3 mb-4 items-center">
-        <button
-          onClick={handleAddToken}
-          className="px-4 py-2 bg-moss text-parchment font-display text-sm tracking-wide hover:bg-moss/90 transition-colors"
-        >
-          + Adicionar token
-        </button>
+        {myRole === "MASTER" && (
+          <button
+            onClick={openAddModal}
+            className="px-4 py-2 bg-moss text-parchment font-display text-sm tracking-wide hover:bg-moss/90 transition-colors"
+          >
+            + Adicionar token
+          </button>
+        )}
 
-        <label className="px-4 py-2 bg-leather/60 text-parchment font-display text-sm tracking-wide hover:bg-leather/80 transition-colors cursor-pointer">
-          Trocar mapa
-          <input type="file" accept="image/*" onChange={handleUploadBackground} className="hidden" />
-        </label>
+        {myRole === "MASTER" && (
+          <label className="px-4 py-2 bg-leather/60 text-parchment font-display text-sm tracking-wide hover:bg-leather/80 transition-colors cursor-pointer">
+            Trocar mapa
+            <input type="file" accept="image/*" onChange={handleUploadBackground} className="hidden" />
+          </label>
+        )}
 
         <button
           onClick={() => setShowGrid((v) => !v)}
@@ -324,50 +414,118 @@ export function Board({ campaignId, socket, userName }: { campaignId: string; so
         </p>
       )}
 
-      <div className="border-2 border-leather bg-[#2a2119] overflow-hidden" style={{ width: BOARD_WIDTH, height: BOARD_HEIGHT }}>
-        <Stage
-          ref={stageRef}
-          width={BOARD_WIDTH}
-          height={BOARD_HEIGHT}
-          scaleX={scale}
-          scaleY={scale}
-          x={stagePos.x}
-          y={stagePos.y}
-          draggable={rulerMode === "off"}
-          onWheel={handleWheel}
-          onMouseDown={handleStageMouseDown}
-          onMouseMove={handleStageMouseMove}
-          onMouseUp={handleStageMouseUp}
-          onDragEnd={(e) => {
-            if (e.target === stageRef.current) {
-              setStagePos({ x: e.target.x(), y: e.target.y() })
-            }
-          }}
-        >
-          <Layer>
-            {bgImage && <KonvaImage image={bgImage} width={BOARD_WIDTH} height={BOARD_HEIGHT} />}
-          </Layer>
-          {showGrid && <Layer>{renderGridLines()}</Layer>}
-          <Layer>
-            {tokens.map((token) => (
-              <TokenShape
-                key={token.id}
-                token={token}
-                draggable={rulerMode === "off"}
-                onDragEnd={handleDragEnd}
-              />
-            ))}
-          </Layer>
-          <Layer listening={rulerMode !== "off"}>
-            {arrows.map((a) => (
-              <MeasureArrowShape key={a.id} arrow={a} onRemove={() => handleRemoveArrow(a.id)} label={distanceLabel(a)} />
-            ))}
-            {drawingArrow && (
-              <MeasureArrowShape arrow={drawingArrow} label={distanceLabel(drawingArrow)} />
-            )}
-          </Layer>
-        </Stage>
+      {rulerMode === "off" && (
+        <p className="text-parchment/40 text-xs mb-2 italic">
+          Clique com o botão direito num personagem para removê-lo (se você tiver permissão).
+        </p>
+      )}
+
+      <div ref={containerRef} className="w-full">
+        <div className="border-2 border-leather bg-[#2a2119] overflow-hidden" style={{ width: boardSize.width, height: boardSize.height }}>
+          <Stage
+            ref={stageRef}
+            width={boardSize.width}
+            height={boardSize.height}
+            scaleX={scale}
+            scaleY={scale}
+            x={stagePos.x}
+            y={stagePos.y}
+            draggable={rulerMode === "off"}
+            onWheel={handleWheel}
+            onMouseDown={handleStageMouseDown}
+            onMouseMove={handleStageMouseMove}
+            onMouseUp={handleStageMouseUp}
+            onDragEnd={(e) => {
+              if (e.target === stageRef.current) {
+                setStagePos({ x: e.target.x(), y: e.target.y() })
+              }
+            }}
+          >
+            <Layer>
+              {bgImage && <KonvaImage image={bgImage} width={boardSize.width} height={boardSize.height} />}
+            </Layer>
+            {showGrid && <Layer>{renderGridLines()}</Layer>}
+            <Layer>
+              {tokens.map((token) => {
+                const canDrag = rulerMode === "off" && (myRole === "MASTER" || token.ownerId === myUserId)
+                const canRemove = myRole === "MASTER" || token.ownerId === myUserId
+                return (
+                  <TokenShape
+                    key={token.id}
+                    token={token}
+                    draggable={canDrag}
+                    canRemove={canRemove}
+                    onDragEnd={handleDragEnd}
+                    onRemove={handleRemoveToken}
+                  />
+                )
+              })}
+            </Layer>
+            <Layer listening={rulerMode !== "off"}>
+              {arrows.map((a) => (
+                <MeasureArrowShape key={a.id} arrow={a} onRemove={() => handleRemoveArrow(a.id)} label={distanceLabel(a)} />
+              ))}
+              {drawingArrow && (
+                <MeasureArrowShape arrow={drawingArrow} label={distanceLabel(drawingArrow)} />
+              )}
+            </Layer>
+          </Stage>
+        </div>
       </div>
+
+      {showAddModal && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+          onClick={() => setShowAddModal(false)}
+        >
+          <div
+            className="bg-parchment text-ink p-6 border-2 border-leather w-80"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-display text-lg text-leather mb-4">Novo personagem</h3>
+
+            <label className="block font-display text-sm text-leather mb-1">Nome</label>
+            <input
+              type="text"
+              value={newTokenName}
+              onChange={(e) => setNewTokenName(e.target.value)}
+              className="w-full bg-transparent border-b border-leather/40 py-2 outline-none focus:border-seal mb-4"
+              autoFocus
+            />
+
+            <label className="block font-display text-sm text-leather mb-1">Pertence a</label>
+            <select
+              value={newTokenOwner}
+              onChange={(e) => setNewTokenOwner(e.target.value)}
+              className="w-full bg-white border border-leather/40 py-2 px-2 outline-none focus:border-seal mb-5"
+            >
+              <option value="">NPC / Mestre (sem dono)</option>
+              {members
+                .filter((m) => m.role === "PLAYER")
+                .map((m) => (
+                  <option key={m.user.id} value={m.user.id}>
+                    {m.user.name}
+                  </option>
+                ))}
+            </select>
+
+            <div className="flex gap-2">
+              <button
+                onClick={confirmAddToken}
+                className="flex-1 py-2 bg-seal text-parchment font-display text-sm hover:bg-seal/90 transition-colors"
+              >
+                Criar
+              </button>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="flex-1 py-2 bg-leather/40 text-ink font-display text-sm hover:bg-leather/60 transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -375,11 +533,15 @@ export function Board({ campaignId, socket, userName }: { campaignId: string; so
 function TokenShape({
   token,
   draggable,
+  canRemove,
   onDragEnd,
+  onRemove,
 }: {
   token: Token
   draggable: boolean
+  canRemove: boolean
   onDragEnd: (id: string, x: number, y: number) => void
+  onRemove: (id: string) => void
 }) {
   return (
     <>
@@ -391,12 +553,17 @@ function TokenShape({
         stroke="#1B1712"
         strokeWidth={2}
         draggable={draggable}
+        opacity={draggable ? 1 : 0.85}
         onDragStart={(e) => {
           e.cancelBubble = true
         }}
         onDragEnd={(e) => {
           e.cancelBubble = true
           onDragEnd(token.id, e.target.x(), e.target.y())
+        }}
+        onContextMenu={(e) => {
+          e.evt.preventDefault()
+          if (canRemove) onRemove(token.id)
         }}
       />
       <Text

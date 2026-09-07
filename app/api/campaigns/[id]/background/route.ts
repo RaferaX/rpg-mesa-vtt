@@ -15,6 +15,16 @@ export async function POST(
   }
 
   const { id } = await params
+  const userId = (session.user as { id: string }).id
+
+  const membership = await prisma.campaignMember.findUnique({
+    where: { userId_campaignId: { userId, campaignId: id } },
+  })
+
+  if (membership?.role !== "MASTER") {
+    return NextResponse.json({ error: "Só o mestre pode trocar o mapa" }, { status: 403 })
+  }
+
   const formData = await req.formData()
   const file = formData.get("file") as File | null
 
