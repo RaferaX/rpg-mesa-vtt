@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { io, Socket } from "socket.io-client"
 import { Board } from "@/components/Board"
+import { Chat } from "@/components/Chat"
 
 export default function Mesa() {
   const params = useParams()
@@ -58,7 +59,7 @@ export default function Mesa() {
   }
 
   return (
-    <main className="px-8 py-12 max-w-3xl">
+    <main className="px-8 py-12">
       <div className="flex justify-between items-center mb-2">
         <h1 className="font-display text-3xl text-brass tracking-wide">
           Mesa
@@ -70,22 +71,26 @@ export default function Mesa() {
           Sair da mesa
         </button>
       </div>
-      <p className="text-parchment/60 mb-8">Status: {status}</p>
+      <p className="text-parchment/60 mb-6">Status: {status}</p>
 
-      <div className="bg-parchment text-ink p-6 border-2 border-leather mb-8">
-        <h2 className="font-display text-lg text-leather mb-3">Eventos da sala</h2>
-        {eventos.length === 0 ? (
-          <p className="text-leather/60">Nenhum evento ainda.</p>
-        ) : (
+      {socket && userName && <Board campaignId={campaignId} socket={socket} userName={userName} />}
+
+      {socket && userName && (
+        <div className="mt-6 max-w-3xl">
+          <Chat campaignId={campaignId} socket={socket} userName={userName} />
+        </div>
+      )}
+
+      {eventos.length > 0 && (
+        <div className="bg-parchment text-ink p-6 border-2 border-leather mt-6 max-w-3xl">
+          <h2 className="font-display text-lg text-leather mb-3">Eventos da sala</h2>
           <ul className="space-y-1 text-sm">
             {eventos.map((e, i) => (
               <li key={i}>{e}</li>
             ))}
           </ul>
-        )}
-      </div>
-
-      {socket && <Board campaignId={campaignId} socket={socket} />}
+        </div>
+      )}
     </main>
   )
 }

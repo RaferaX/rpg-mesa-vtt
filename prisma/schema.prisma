@@ -18,13 +18,15 @@ model User {
 }
 
 model Campaign {
-  id          String     @id @default(cuid())
-  name        String
-  inviteCode  String     @unique
-  createdAt   DateTime   @default(now())
+  id            String     @id @default(cuid())
+  name          String
+  inviteCode    String     @unique
+  backgroundUrl String?
+  createdAt     DateTime   @default(now())
 
-  members     CampaignMember[]
-  tokens      Token[]
+  members       CampaignMember[]
+  tokens        Token[]
+  messages      ChatMessage[]
 }
 
 model Token {
@@ -55,7 +57,24 @@ model CampaignMember {
   @@unique([userId, campaignId])
 }
 
+model ChatMessage {
+  id          String      @id @default(cuid())
+  content     String
+  authorName  String
+  type        MessageType @default(TEXT)
+
+  campaign    Campaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId  String
+
+  createdAt   DateTime    @default(now())
+}
+
 enum Role {
   MASTER
   PLAYER
+}
+
+enum MessageType {
+  TEXT
+  ROLL
 }
