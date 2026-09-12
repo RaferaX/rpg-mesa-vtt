@@ -103,7 +103,9 @@ export default function Mesa() {
             <Chat campaignId={campaignId} socket={socket} userName={userName} />
           </div>
           <div className="w-72 shrink-0">
-            <CharacterPanel campaignId={campaignId} socket={socket} />
+            {myRole && myUserId && (
+  <CharacterPanel campaignId={campaignId} socket={socket} myRole={myRole} myUserId={myUserId} />
+)}
           </div>
         </div>
       )}

@@ -13,6 +13,7 @@ type Token = {
   x: number
   y: number
   ownerId: string | null
+  onBoard: boolean
 }
 
 type Member = {
@@ -103,7 +104,7 @@ export function Board({
   useEffect(() => {
     function handleTokenMovido({ tokenId, x, y }: { tokenId: string; x: number; y: number }) {
       setTokens((prev) =>
-        prev.map((t) => (t.id === tokenId ? { ...t, x, y } : t))
+        prev.map((t) => (t.id === tokenId ? { ...t, x, y, onBoard: true } : t))
       )
     }
 
@@ -123,8 +124,10 @@ export function Board({
       setArrows((prev) => prev.filter((a) => a.id !== arrowId))
     }
 
-    function handleTokenRemovidoConfirmado({ tokenId }: { tokenId: string }) {
-      setTokens((prev) => prev.filter((t) => t.id !== tokenId))
+    function handleTokenSaiuDeCena({ tokenId }: { tokenId: string }) {
+      setTokens((prev) =>
+        prev.map((t) => (t.id === tokenId ? { ...t, onBoard: false } : t))
+      )
     }
 
     socket.on("tokenMovido", handleTokenMovido)
@@ -132,7 +135,7 @@ export function Board({
     socket.on("mapaAtualizado", handleMapaAtualizado)
     socket.on("setaDesenhada", handleSetaDesenhada)
     socket.on("setaRemovida", handleSetaRemovida)
-    socket.on("tokenRemovidoConfirmado", handleTokenRemovidoConfirmado)
+    socket.on("tokenSaiuDeCenaConfirmado", handleTokenSaiuDeCena)
 
     return () => {
       socket.off("tokenMovido", handleTokenMovido)
@@ -140,7 +143,7 @@ export function Board({
       socket.off("mapaAtualizado", handleMapaAtualizado)
       socket.off("setaDesenhada", handleSetaDesenhada)
       socket.off("setaRemovida", handleSetaRemovida)
-      socket.off("tokenRemovidoConfirmado", handleTokenRemovidoConfirmado)
+      socket.off("tokenSaiuDeCenaConfirmado", handleTokenSaiuDeCena)
     }
   }, [socket])
 
@@ -154,12 +157,12 @@ export function Board({
     setTokens(data)
   }
 
-  function handleDragEnd(tokenId: string, rawX: number, rawY: number) {
+  function moveTokenTo(tokenId: string, rawX: number, rawY: number) {
     const x = snapToGrid ? snapValue(rawX) : rawX
     const y = snapToGrid ? snapValue(rawY) : rawY
 
     setTokens((prev) =>
-      prev.map((t) => (t.id === tokenId ? { ...t, x, y } : t))
+      prev.map((t) => (t.id === tokenId ? { ...t, x, y, onBoard: true } : t))
     )
 
     socket.emit("moverToken", { campaignId, tokenId, x, y })
@@ -175,19 +178,51 @@ export function Board({
     })
   }
 
-  async function handleRemoveToken(tokenId: string) {
-    const confirmar = confirm("Remover este personagem do tabuleiro?")
-    if (!confirmar) return
+  function handleDragEnd(tokenId: string, rawX: number, rawY: number) {
+    moveTokenTo(tokenId, rawX, rawY)
+  }
 
-    const res = await fetch(`/api/tokens/${tokenId}`, { method: "DELETE" })
+  // --- Soltar personagem vindo do painel lateral ---
+
+  function handleBoardDragOver(e: React.DragEvent) {
+    e.preventDefault()
+  }
+
+  function handleBoardDrop(e: React.DragEvent) {
+    e.preventDefault()
+    const tokenId = e.dataTransfer.getData("text/plain")
+    if (!tokenId) return
+
+    const token = tokens.find((t) => t.id === tokenId)
+    if (!token) return
+
+    const canDrag = myRole === "MASTER" || token.ownerId === myUserId
+    if (!canDrag) return
+
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return
+
+    const pointerX = e.clientX - rect.left
+    const pointerY = e.clientY - rect.top
+
+    const x = (pointerX - stagePos.x) / scale
+    const y = (pointerY - stagePos.y) / scale
+
+    moveTokenTo(tokenId, x, y)
+  }
+
+  async function handleRemoveFromBoard(tokenId: string) {
+    const res = await fetch(`/api/tokens/${tokenId}/remove-from-board`, { method: "PUT" })
 
     if (!res.ok) {
-      alert("Você não tem permissão para remover este token.")
+      alert("Você não tem permissão para remover este personagem da cena.")
       return
     }
 
-    setTokens((prev) => prev.filter((t) => t.id !== tokenId))
-    socket.emit("tokenRemovido", { campaignId, tokenId })
+    setTokens((prev) =>
+      prev.map((t) => (t.id === tokenId ? { ...t, onBoard: false } : t))
+    )
+    socket.emit("tokenSaiuDeCena", { campaignId, tokenId })
   }
 
   function openAddModal() {
@@ -339,6 +374,8 @@ export function Board({
     setDrawingArrow(null)
   }
 
+  const visibleTokens = tokens.filter((t) => t.onBoard)
+
   return (
     <div>
       <div className="flex flex-wrap gap-3 mb-4 items-center">
@@ -416,11 +453,16 @@ export function Board({
 
       {rulerMode === "off" && (
         <p className="text-parchment/40 text-xs mb-2 italic">
-          Clique com o botão direito num personagem para removê-lo (se você tiver permissão).
+          Clique com o botão direito num personagem para tirá-lo de cena. Arraste um personagem da lista ao lado para posicioná-lo no tabuleiro.
         </p>
       )}
 
-      <div ref={containerRef} className="w-full">
+      <div
+        ref={containerRef}
+        className="w-full"
+        onDragOver={handleBoardDragOver}
+        onDrop={handleBoardDrop}
+      >
         <div className="border-2 border-leather bg-[#2a2119] overflow-hidden" style={{ width: boardSize.width, height: boardSize.height }}>
           <Stage
             ref={stageRef}
@@ -446,7 +488,7 @@ export function Board({
             </Layer>
             {showGrid && <Layer>{renderGridLines()}</Layer>}
             <Layer>
-              {tokens.map((token) => {
+              {visibleTokens.map((token) => {
                 const canDrag = rulerMode === "off" && (myRole === "MASTER" || token.ownerId === myUserId)
                 const canRemove = myRole === "MASTER" || token.ownerId === myUserId
                 return (
@@ -456,7 +498,7 @@ export function Board({
                     draggable={canDrag}
                     canRemove={canRemove}
                     onDragEnd={handleDragEnd}
-                    onRemove={handleRemoveToken}
+                    onRemove={handleRemoveFromBoard}
                   />
                 )
               })}

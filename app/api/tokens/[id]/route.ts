@@ -34,7 +34,7 @@ export async function PUT(
 
   const updated = await prisma.token.update({
     where: { id },
-    data: { x, y },
+    data: { x, y, onBoard: true },
   })
 
   return NextResponse.json(updated)
@@ -61,11 +61,10 @@ export async function DELETE(
     where: { userId_campaignId: { userId, campaignId: token.campaignId } },
   })
 
-  const isOwner = token.ownerId === userId
   const isMaster = membership?.role === "MASTER"
 
-  if (!isOwner && !isMaster) {
-    return NextResponse.json({ error: "Você não pode remover este token" }, { status: 403 })
+  if (!isMaster) {
+    return NextResponse.json({ error: "Só o mestre pode excluir personagens permanentemente" }, { status: 403 })
   }
 
   await prisma.token.delete({ where: { id } })

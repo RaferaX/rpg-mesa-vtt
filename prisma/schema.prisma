@@ -35,11 +35,14 @@ model Token {
   color       String     @default("#B08A3E")
   x           Float      @default(100)
   y           Float      @default(100)
+  onBoard     Boolean    @default(true)
 
   campaign    Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   campaignId  String
 
   ownerId     String?
+
+  sheet       CharacterSheet?
 
   createdAt   DateTime   @default(now())
 }
@@ -67,6 +70,24 @@ model ChatMessage {
   campaignId  String
 
   createdAt   DateTime    @default(now())
+}
+
+model CharacterSheet {
+  id          String            @id @default(cuid())
+  token       Token             @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+  tokenId     String            @unique
+  fields      CharacterField[]
+  createdAt   DateTime          @default(now())
+}
+
+model CharacterField {
+  id        String          @id @default(cuid())
+  label     String
+  value     String
+  order     Int             @default(0)
+
+  sheet     CharacterSheet  @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  sheetId   String
 }
 
 enum Role {
